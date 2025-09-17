@@ -1,0 +1,137 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-pipeline
+  labels:
+    app: data-pipeline
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: data-pipeline
+  template:
+    metadata:
+      labels:
+        app: data-pipeline
+    spec:
+      containers:
+      # Redis Service
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+          name: redis
+        resources:
+          limits:
+            cpu: 100m
+            memory: 256Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        # Disable Redis persistence to avoid permission issues
+        command: ["redis-server", "--save", "", "--appendonly", "no"]
+        volumeMounts:
+        - name: shared-data
+          mountPath: /shared
+      
+      # Data Ingestion Service
+      - name: data-ingest
+        image: image-registry.openshift-image-registry.svc:5000/your-data-pipeline/data-ingest:latest
+        env:
+        - name: OS_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: allas-credentials
+              key: OS_USERNAME
+        - name: OS_USER_DOMAIN_NAME
+          valueFrom:
+            secretKeyRef:
+              name: allas-credentials
+              key: OS_USER_DOMAIN_NAME
+        - name: DATA_BUCKET
+          valueFrom:
+            secretKeyRef:
+              name: allas-credentials
+              key: DATA_BUCKET
+        - name: OS_AUTH_URL
+          valueFrom:
+            secretKeyRef:
+              name: allas-credentials
+              key: OS_AUTH_URL
+        - name: OS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: allas-credentials
+              key: OS_PASSWORD
+        - name: OS_PROJECT_DOMAIN_NAME
+          valueFrom:
+            secretKeyRef:
+              name: allas-credentials
+              key: OS_PROJECT_DOMAIN_NAME
+        - name: OS_PROJECT_NAME
+          valueFrom:
+            secretKeyRef:
+              name: allas-credentials
+              key: OS_PROJECT_NAME
+        - name: SHARED_DATA_PATH
+          value: "/shared/data"
+        - name: REDIS_HOST
+          value: "localhost"
+        - name: REDIS_PORT
+          value: "6379"
+        resources:
+          limits:
+            cpu: 200m
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+        volumeMounts:
+        - name: shared-data
+          mountPath: /shared
+      
+      # Data Cleaning Service  
+      - name: data-clean
+        image: image-registry.openshift-image-registry.svc:5000/your-data-pipeline/data-clean:latest
+        env:
+        - name: SHARED_DATA_PATH
+          value: "/shared/data"
+        - name: REDIS_HOST
+          value: "localhost"
+        - name: REDIS_PORT
+          value: "6379"
+        resources:
+          limits:
+            cpu: 300m
+            memory: 768Mi
+          requests:
+            cpu: 150m
+            memory: 384Mi
+        volumeMounts:
+        - name: shared-data
+          mountPath: /shared
+      
+      # Data Visualization Service
+      - name: data-visualization
+        image: image-registry.openshift-image-registry.svc:5000/your-data-pipeline/data-visualization:latest
+        env:
+        - name: SHARED_DATA_PATH
+          value: "/shared/data"
+        ports:
+        - containerPort: 8501
+          name: http
+        resources:
+          limits:
+            cpu: 300m
+            memory: 768Mi
+          requests:
+            cpu: 150m
+            memory: 384Mi
+        volumeMounts:
+        - name: shared-data
+          mountPath: /shared
+      
+      volumes:
+      - name: shared-data
+        emptyDir: {}
+      restartPolicy: Always
