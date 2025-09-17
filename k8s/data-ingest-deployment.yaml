@@ -19,7 +19,7 @@ spec:
       containers:
       - name: data-ingest
         # Replace with your actual image registry path
-        image: image-registry.rahti.csc.fi/your-project/data-ingest:latest
+        image: image-registry.apps.2.rahti.csc.fi/your-project/data-ingest:latest
         env:
         - name: REDIS_HOST
           value: "redis"

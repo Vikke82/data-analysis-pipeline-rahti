@@ -22,18 +22,18 @@ $registryChoice = Read-Host "Choose registry option (1-3)"
 switch ($registryChoice) {
     "1" {
         $project = Read-Host "Enter your Rahti project name"
-        $registry = "image-registry.rahti.csc.fi/$project"
+        $registry = "image-registry.apps.2.rahti.csc.fi/$project"
         Write-Host "Using Rahti integrated registry: $registry" -ForegroundColor Green
         
         # Login to Rahti registry
         Write-Host "🔐 Logging into Rahti registry..." -ForegroundColor Yellow
-        Write-Host "Please ensure you're logged in to OpenShift first: oc login https://rahti.csc.fi:8443" -ForegroundColor Cyan
+        Write-Host "Please ensure you're logged in to OpenShift first: oc login https://api.2.rahti.csc.fi:6443" -ForegroundColor Cyan
         $token = oc whoami -t
         if (-not $token) {
             Write-Host "❌ Not logged in to OpenShift. Please login first." -ForegroundColor Red
             exit 1
         }
-        docker login -u unused -p $token image-registry.rahti.csc.fi
+        docker login -u unused -p $token image-registry.apps.2.rahti.csc.fi
     }
     "2" {
         $dockerUser = Read-Host "Enter your Docker Hub username"

@@ -12,8 +12,9 @@ class DataLoader:
     """Handle loading data from the shared data directory."""
     
     def __init__(self):
-        self.shared_data_path = "/shared/data"
-        
+        # Use environment variable or fallback to writable directory
+        self.shared_data_path = os.getenv('SHARED_DATA_PATH', '/tmp/shared/data')
+    
     @property
     def data_path(self):
         """Get the data path, creating it if it doesn't exist."""

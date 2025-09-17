@@ -46,7 +46,7 @@ $registryChoice = Read-Host "Choose registry option (1-3)"
 
 switch ($registryChoice) {
     "1" {
-        $registry = "image-registry.rahti.csc.fi/$project"
+        $registry = "image-registry.apps.2.rahti.csc.fi/$project"
         Write-Host "Using Rahti integrated registry: $registry" -ForegroundColor Green
     }
     "2" {

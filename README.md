@@ -102,23 +102,71 @@ docker-compose down
      --from-literal=DATA_BUCKET=your_container_name
    ```
 
-4. **Deploy from your GitHub fork:**
+4. **Deploy services directly from GitHub (Recommended Method):**
+
+   This method bypasses registry issues by using OpenShift's source-to-image capability:
+
    ```bash
-   # Method 1: Use the automated scripts
-   ./build-and-push.ps1
-   ./deploy-to-rahti.ps1
+   # Deploy data-ingest service
+   oc new-app https://github.com/YOUR_USERNAME/data-analysis-pipeline-rahti.git --context-dir=data-ingest --name=data-ingest
    
-   # Method 2: Deploy directly from GitHub (advanced)
-   oc new-app https://github.com/YOUR_USERNAME/data-analysis-pipeline-rahti.git
+   # Deploy data-clean service
+   oc new-app https://github.com/YOUR_USERNAME/data-analysis-pipeline-rahti.git --context-dir=data-clean --name=data-clean
+   
+   # Deploy data-visualization service
+   oc new-app https://github.com/YOUR_USERNAME/data-analysis-pipeline-rahti.git --context-dir=data-visualization --name=data-visualization
+   
+   # Deploy Redis service
+   oc new-app redis:7-alpine --name=redis
    ```
 
-5. **Verify deployment:**
+5. **Set up environment variables for all services:**
    ```bash
-   # Check pods status
+   # Link Allas credentials to all services
+   oc set env deployment/data-ingest --from=secret/allas-credentials
+   oc set env deployment/data-clean --from=secret/allas-credentials
+   oc set env deployment/data-visualization --from=secret/allas-credentials
+   ```
+
+6. **Configure resource limits to avoid quota issues:**
+
+   **⚠️ Important**: CSC projects have CPU and memory quotas. Set appropriate limits:
+
+   ```bash
+   # Set resource limits for Redis (lightweight)
+   oc set resources deployment redis --limits=cpu=100m,memory=256Mi --requests=cpu=50m,memory=128Mi
+   
+   # Set resource limits for data-ingest
+   oc set resources deployment data-ingest --limits=cpu=200m,memory=512Mi --requests=cpu=100m,memory=256Mi
+   
+   # Set resource limits for data-clean
+   oc set resources deployment data-clean --limits=cpu=300m,memory=768Mi --requests=cpu=150m,memory=384Mi
+   
+   # Set resource limits for data-visualization
+   oc set resources deployment data-visualization --limits=cpu=300m,memory=768Mi --requests=cpu=150m,memory=384Mi
+   ```
+
+   **Resource Planning Guide:**
+   - **Total CPU needed**: ~900m (0.9 cores)
+   - **Total Memory needed**: ~2.3GB
+   - **Recommended project quota**: At least 1 CPU core and 3GB memory
+
+7. **Expose the web interface:**
+   ```bash
+   # Create external route for the dashboard
+   oc expose service/data-visualization
+   ```
+
+8. **Verify deployment:**
+   ```bash
+   # Check pods status (all should be Running)
    oc get pods
    
    # Get your application URL
    oc get routes
+   
+   # Check resource usage against quota
+   oc describe quota
    
    # View logs if needed
    oc logs -f deployment/data-visualization
@@ -753,20 +801,53 @@ oc describe quota
 3. **Check workflow logs** in GitHub Actions tab
 4. **Test deployment manually first** before automating
 
-#### 8. "Connection refused" to Redis
+#### 9. Quota and Resource Management Issues
 
-**Problem:** Services can't connect to Redis
+**Problem:** "exceeded quota" errors when deploying
 
 **Solutions:**
 ```bash
-# 1. Check Redis pod status
-oc get pods | grep redis
+# 1. Check your current quota usage
+oc describe quota
 
-# 2. Test Redis connectivity
-oc exec -it deployment/redis -- redis-cli ping
+# 2. View resource consumption by pods
+oc top pods
 
-# 3. Check service networking
-oc get services redis
+# 3. Reduce resource limits if needed
+oc set resources deployment DEPLOYMENT_NAME --limits=cpu=200m,memory=512Mi --requests=cpu=100m,memory=256Mi
+
+# 4. Scale down deployments temporarily
+oc scale deployment DEPLOYMENT_NAME --replicas=0
+
+# 5. Check CSC project quota limits in CSC portal
+# Go to: https://my.csc.fi
+```
+
+**Recommended Resource Allocation:**
+- **Redis**: CPU: 100m, Memory: 256Mi
+- **Data-ingest**: CPU: 200m, Memory: 512Mi  
+- **Data-clean**: CPU: 300m, Memory: 768Mi
+- **Data-visualization**: CPU: 300m, Memory: 768Mi
+- **Total**: ~900m CPU, ~2.3GB Memory
+
+#### 10. Build and Deployment Failures
+
+**Problem:** Services fail to build or deploy
+
+**Solutions:**
+```bash
+# 1. Check build logs
+oc logs -f buildconfig/SERVICE_NAME
+
+# 2. Check deployment events
+oc get events --sort-by='.lastTimestamp' | tail -20
+
+# 3. Restart failed builds
+oc start-build SERVICE_NAME
+
+# 4. Delete and redeploy problematic services
+oc delete deployment SERVICE_NAME
+oc new-app https://github.com/YOUR_USERNAME/data-analysis-pipeline-rahti.git --context-dir=SERVICE_FOLDER --name=SERVICE_NAME
 ```
 
 ### 📞 Getting Help
@@ -788,6 +869,250 @@ oc get services redis
 
 5. **Check the repository issues:**
    - Go to: https://github.com/Vikke82/data-analysis-pipeline-rahti/issues
+
+### 🔍 Debugging Guide for Students
+
+#### Step-by-Step Debugging Process
+
+**1. Check Overall Status:**
+```bash
+# Get overview of all resources
+oc status
+
+# Check pod health
+oc get pods -o wide
+
+# Check deployments
+oc get deployments
+
+# Check services
+oc get services
+
+# Check routes
+oc get routes
+```
+
+**2. Identify Problem Pods:**
+```bash
+# Look for pods with status: CrashLoopBackOff, Error, ImagePullBackOff
+oc get pods
+
+# Get detailed pod information
+oc describe pod POD_NAME
+
+# Check pod logs (current and previous)
+oc logs POD_NAME
+oc logs POD_NAME --previous
+```
+
+**3. Debug Resource Issues:**
+```bash
+# Check quota usage
+oc describe quota
+
+# Check node resource availability
+oc describe nodes
+
+# Check resource consumption
+oc top pods
+oc top nodes
+```
+
+**4. Debug Networking Issues:**
+```bash
+# Check if services are properly exposed
+oc get endpoints
+
+# Test service connectivity from within cluster
+oc run debug-pod --image=busybox --rm -it --restart=Never -- nslookup redis
+
+# Test external route
+curl -I http://YOUR-ROUTE-URL
+```
+
+**5. Debug Environment Variables:**
+```bash
+# Check if secrets exist
+oc get secrets
+
+# Verify secret content (keys only, values are base64 encoded)
+oc describe secret allas-credentials
+
+# Check if environment variables are set in deployments
+oc set env deployment/SERVICE_NAME --list
+
+# Test environment variables in running pod
+oc exec -it deployment/SERVICE_NAME -- env | grep OS_
+```
+
+**6. Debug Build Issues:**
+```bash
+# Check build configs
+oc get buildconfigs
+
+# Check build status
+oc get builds
+
+# View build logs
+oc logs -f build/BUILD_NAME
+
+# Trigger new build
+oc start-build BUILDCONFIG_NAME
+```
+
+#### Common Debug Commands Cheat Sheet
+
+```bash
+# Quick health check of all services
+oc get pods,svc,routes
+
+# Follow logs from all services
+oc logs -f deployment/data-ingest &
+oc logs -f deployment/data-clean &
+oc logs -f deployment/data-visualization &
+oc logs -f deployment/redis &
+
+# Check recent events (shows last 20 events)
+oc get events --sort-by='.lastTimestamp' | tail -20
+
+# Port forward for local testing
+oc port-forward service/data-visualization 8501:8501
+# Then access: http://localhost:8501
+
+# Execute commands inside containers
+oc exec -it deployment/SERVICE_NAME -- /bin/bash
+oc exec -it deployment/SERVICE_NAME -- env
+oc exec -it deployment/SERVICE_NAME -- ls -la /shared/data
+
+# Scale services up/down
+oc scale deployment SERVICE_NAME --replicas=0  # Stop
+oc scale deployment SERVICE_NAME --replicas=1  # Start
+
+# Restart deployment (force pod recreation)
+oc rollout restart deployment/SERVICE_NAME
+
+# Check deployment history and rollback if needed
+oc rollout history deployment/SERVICE_NAME
+oc rollout undo deployment/SERVICE_NAME
+```
+
+#### Debugging Specific Issues
+
+**Application Shows "Not Available" Page:**
+1. Check pod status: `oc get pods`
+2. Check if pods are running: `oc logs -f deployment/data-visualization`
+3. Verify route exists: `oc get routes`
+4. Test port forwarding: `oc port-forward service/data-visualization 8501:8501`
+
+**Data Not Processing:**
+1. Check Allas credentials: `oc set env deployment/data-ingest --list`
+2. Verify bucket access: `oc logs -f deployment/data-ingest`
+3. Check Redis connectivity: `oc exec -it deployment/redis -- redis-cli ping`
+4. Monitor data flow: `oc exec -it deployment/data-clean -- ls -la /shared/data`
+
+**Services Crashing:**
+1. Check resource limits: `oc describe deployment SERVICE_NAME`
+2. Review crash logs: `oc logs POD_NAME --previous`
+3. Check quota usage: `oc describe quota`
+4. Verify environment variables: `oc set env deployment/SERVICE_NAME --list`
+
+**Build Failures:**
+1. Check Dockerfile syntax in GitHub repository
+2. Verify build logs: `oc logs -f buildconfig/SERVICE_NAME`
+3. Check source code changes: Compare with working version
+4. Retry build: `oc start-build SERVICE_NAME`
+
+### 📊 Monitoring and Maintenance
+
+#### Resource Monitoring Commands
+```bash
+# Monitor resource usage over time
+watch -n 5 'oc top pods'
+
+# Check detailed resource consumption
+oc describe node NODE_NAME | grep -A 5 "Allocated resources"
+
+# Monitor quota usage
+watch -n 10 'oc describe quota'
+
+# View resource requests and limits
+oc get pods -o custom-columns=NAME:.metadata.name,CPU_REQ:.spec.containers[*].resources.requests.cpu,MEM_REQ:.spec.containers[*].resources.requests.memory,CPU_LIM:.spec.containers[*].resources.limits.cpu,MEM_LIM:.spec.containers[*].resources.limits.memory
+```
+
+#### Application Health Monitoring
+```bash
+# Set up health check endpoints monitoring
+curl -f http://YOUR-ROUTE/health || echo "Service down"
+
+# Monitor application metrics (if available)
+curl http://YOUR-ROUTE/metrics
+
+# Monitor log patterns for errors
+oc logs -f deployment/SERVICE_NAME | grep -i error
+
+# Check application response times
+time curl -s http://YOUR-ROUTE > /dev/null
+```
+
+#### Automated Monitoring Script
+Create a monitoring script that you can run periodically:
+
+```bash
+#!/bin/bash
+# save as monitor.sh
+
+echo "=== Pod Status ==="
+oc get pods
+
+echo "=== Resource Usage ==="
+oc top pods 2>/dev/null || echo "Metrics not available"
+
+echo "=== Quota Usage ==="
+oc describe quota | grep -A 10 "Resource\|Used"
+
+echo "=== Recent Events ==="
+oc get events --sort-by='.lastTimestamp' | tail -10
+
+echo "=== Service Endpoints ==="
+curl -I http://YOUR-ROUTE 2>/dev/null | head -1 || echo "Service not responding"
+```
+
+Run with: `bash monitor.sh`
+
+#### Maintenance Tasks
+
+**Regular Cleanup:**
+```bash
+# Clean up old builds (keep last 3)
+oc get builds --sort-by='.metadata.creationTimestamp' | head -n -3 | awk '{print $1}' | xargs oc delete build
+
+# Clean up failed pods
+oc delete pods --field-selector=status.phase=Failed
+
+# Clean up completed jobs (if any)
+oc delete jobs --field-selector=status.successful=1
+```
+
+**Backup Important Data:**
+```bash
+# Export configurations
+oc export all > backup-configs.yaml
+oc export secrets > backup-secrets.yaml
+
+# Backup application data (if stored in volumes)
+oc exec -it deployment/SERVICE_NAME -- tar -czf /tmp/backup.tar.gz /shared/data
+oc cp POD_NAME:/tmp/backup.tar.gz ./data-backup.tar.gz
+```
+
+**Performance Optimization:**
+```bash
+# Adjust resource limits based on actual usage
+oc patch deployment SERVICE_NAME -p '{"spec":{"template":{"spec":{"containers":[{"name":"SERVICE_NAME","resources":{"limits":{"cpu":"NEW_LIMIT","memory":"NEW_LIMIT"}}}]}}}}'
+
+# Scale services based on load
+oc scale deployment SERVICE_NAME --replicas=2  # Scale up
+oc scale deployment SERVICE_NAME --replicas=1  # Scale down
+```
 
 ### 💡 Pro Tips for Students
 

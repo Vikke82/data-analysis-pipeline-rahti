@@ -49,7 +49,11 @@ class DataIngestService:
         self.redis_client = redis.Redis(host='redis', port=6379, decode_responses=True)
         
         # Shared volume path where processed files are stored for other services
-        self.shared_data_path = "/shared/data"
+        # Use environment variable or fallback to writable directory
+        self.shared_data_path = os.getenv('SHARED_DATA_PATH', '/tmp/shared/data')
+        
+        # Ensure the shared data directory exists and is writable
+        os.makedirs(self.shared_data_path, exist_ok=True)
         
         # Track last synchronization time to implement incremental sync
         self.last_sync_time = None

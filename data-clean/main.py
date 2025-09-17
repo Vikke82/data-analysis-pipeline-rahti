@@ -72,7 +72,12 @@ class DataCleanService:
         self.redis_client = redis.Redis(host='redis', port=6379, decode_responses=True)
         
         # File system configuration for data pipeline
-        self.shared_data_path = "/shared/data"
+        # Use environment variable or fallback to writable directory
+        self.shared_data_path = os.getenv('SHARED_DATA_PATH', '/tmp/shared/data')
+        
+        # Ensure the shared data directory exists and is writable
+        os.makedirs(self.shared_data_path, exist_ok=True)
+        
         self.raw_data_pattern = "raw_*.csv"          # Pattern for ingested files
         self.cleaned_data_prefix = "cleaned_"        # Prefix for processed files
         self.summary_prefix = "summary_"             # Prefix for quality reports

@@ -19,7 +19,7 @@ spec:
       containers:
       - name: data-clean
         # Replace with your actual image registry path
-        image: image-registry.rahti.csc.fi/your-project/data-clean:latest
+        image: image-registry.apps.2.rahti.csc.fi/your-project/data-clean:latest
         env:
         - name: REDIS_HOST
           value: "redis"

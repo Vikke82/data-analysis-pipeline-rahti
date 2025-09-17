@@ -1,0 +1,16 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-ingest
+spec:
+  template:
+    spec:
+      volumes:
+      - name: shared-data
+        persistentVolumeClaim:
+          claimName: shared-data-pvc
+      containers:
+      - name: data-ingest
+        volumeMounts:
+        - name: shared-data
+          mountPath: /shared
