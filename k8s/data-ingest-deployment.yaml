@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-ingest
+  labels:
+    app: data-ingest
+    tier: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: data-ingest
+  template:
+    metadata:
+      labels:
+        app: data-ingest
+        tier: backend
+    spec:
+      containers:
+      - name: data-ingest
+        # Replace with your actual image registry path
+        image: image-registry.rahti.csc.fi/your-project/data-ingest:latest
+        env:
+        - name: REDIS_HOST
+          value: "redis"
+        - name: REDIS_PORT
+          value: "6379"
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: PIPELINE_SCHEDULE_INGESTION
+          value: "15"
+        envFrom:
+        - secretRef:
+            name: allas-credentials
+        resources:
+          limits:
+            memory: "512Mi"
+            cpu: "300m"
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+        volumeMounts:
+        - name: shared-data
+          mountPath: /shared/data
+        - name: shared-config
+          mountPath: /shared/config
+          readOnly: true
+      volumes:
+      - name: shared-data
+        persistentVolumeClaim:
+          claimName: shared-data-pvc
+      - name: shared-config
+        configMap:
+          name: pipeline-config
+      restartPolicy: Always

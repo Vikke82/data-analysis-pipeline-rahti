@@ -1,0 +1,49 @@
+{
+  "pipeline": {
+    "name": "CSC Allas Data Analysis Pipeline",
+    "version": "1.0.0",
+    "description": "Containerized data pipeline for ingesting, cleaning, and visualizing data from CSC Allas"
+  },
+  "services": {
+    "data-ingest": {
+      "description": "Handles data ingestion from CSC Allas object storage",
+      "schedule": "every 15 minutes",
+      "supported_formats": ["csv", "json", "xlsx", "txt"],
+      "max_file_size": "100MB"
+    },
+    "data-clean": {
+      "description": "Processes and cleans ingested data",
+      "schedule": "every 10 minutes", 
+      "features": [
+        "Duplicate removal",
+        "Missing value handling",
+        "Data type standardization",
+        "Outlier detection",
+        "Quality assessment"
+      ]
+    },
+    "data-visualization": {
+      "description": "Streamlit dashboard for data visualization and exploration",
+      "port": 8501,
+      "features": [
+        "Interactive dashboards",
+        "Real-time pipeline monitoring",
+        "Data quality reporting",
+        "Multiple visualization types"
+      ]
+    }
+  },
+  "data_quality": {
+    "thresholds": {
+      "completeness": 80,
+      "uniqueness": 95,
+      "consistency": 90,
+      "validity": 85
+    }
+  },
+  "monitoring": {
+    "pipeline_status": "Redis-based status tracking",
+    "data_freshness": "Automatic timestamp tracking",
+    "quality_metrics": "Comprehensive quality reporting"
+  }
+}

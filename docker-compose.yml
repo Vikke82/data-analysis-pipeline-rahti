@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  data-ingest:
+    build:
+      context: ./data-ingest
+      dockerfile: Dockerfile
+    container_name: data-ingest-service
+    environment:
+      - OS_AUTH_URL=${OS_AUTH_URL}
+      - OS_USERNAME=${OS_USERNAME}
+      - OS_PASSWORD=${OS_PASSWORD}
+      - OS_PROJECT_NAME=${OS_PROJECT_NAME}
+      - OS_PROJECT_DOMAIN_NAME=${OS_PROJECT_DOMAIN_NAME}
+      - OS_USER_DOMAIN_NAME=${OS_USER_DOMAIN_NAME}
+      - DATA_BUCKET=${DATA_BUCKET}
+    volumes:
+      - shared-data:/shared/data
+      - ./shared/config:/shared/config:ro
+    networks:
+      - pipeline-network
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  data-clean:
+    build:
+      context: ./data-clean
+      dockerfile: Dockerfile
+    container_name: data-clean-service
+    volumes:
+      - shared-data:/shared/data
+      - ./shared/config:/shared/config:ro
+    networks:
+      - pipeline-network
+    depends_on:
+      - data-ingest
+      - redis
+    restart: unless-stopped
+
+  data-visualization:
+    build:
+      context: ./data-visualization
+      dockerfile: Dockerfile
+    container_name: data-visualization-service
+    ports:
+      - "8501:8501"
+    volumes:
+      - shared-data:/shared/data
+      - ./shared/config:/shared/config:ro
+    networks:
+      - pipeline-network
+    depends_on:
+      - data-clean
+    environment:
+      - STREAMLIT_SERVER_PORT=8501
+      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis-service
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - pipeline-network
+    restart: unless-stopped
+
+volumes:
+  shared-data:
+    driver: local
+  redis-data:
+    driver: local
+
+networks:
+  pipeline-network:
+    driver: bridge

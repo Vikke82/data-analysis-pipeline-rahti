@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-clean
+  labels:
+    app: data-clean
+    tier: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: data-clean
+  template:
+    metadata:
+      labels:
+        app: data-clean
+        tier: backend
+    spec:
+      containers:
+      - name: data-clean
+        # Replace with your actual image registry path
+        image: image-registry.rahti.csc.fi/your-project/data-clean:latest
+        env:
+        - name: REDIS_HOST
+          value: "redis"
+        - name: REDIS_PORT
+          value: "6379"
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: PIPELINE_SCHEDULE_CLEANING
+          value: "10"
+        - name: QUALITY_COMPLETENESS_THRESHOLD
+          value: "80"
+        - name: QUALITY_UNIQUENESS_THRESHOLD
+          value: "95"
+        - name: QUALITY_CONSISTENCY_THRESHOLD
+          value: "90"
+        - name: QUALITY_VALIDITY_THRESHOLD
+          value: "85"
+        - name: DATA_RETENTION_DAYS
+          value: "30"
+        - name: MAX_FILE_SIZE_MB
+          value: "100"
+        resources:
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+          requests:
+            memory: "512Mi"
+            cpu: "200m"
+        volumeMounts:
+        - name: shared-data
+          mountPath: /shared/data
+        - name: shared-config
+          mountPath: /shared/config
+          readOnly: true
+      volumes:
+      - name: shared-data
+        persistentVolumeClaim:
+          claimName: shared-data-pvc
+      - name: shared-config
+        configMap:
+          name: pipeline-config
+      restartPolicy: Always

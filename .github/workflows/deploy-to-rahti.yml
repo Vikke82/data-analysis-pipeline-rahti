@@ -1,0 +1,122 @@
+name: Deploy to CSC Rahti
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup OpenShift CLI
+      uses: redhat-actions/openshift-tools-installer@v1
+      with:
+        oc: 4
+    
+    - name: Login to OpenShift
+      run: |
+        oc login --token="${{ secrets.RAHTI_TOKEN }}" --server="${{ secrets.RAHTI_SERVER }}"
+        oc project ${{ secrets.RAHTI_PROJECT }} || oc new-project ${{ secrets.RAHTI_PROJECT }} --description="csc_project: ${{ secrets.CSC_PROJECT_NUMBER }}"
+    
+    - name: Create/Update Allas Credentials Secret
+      run: |
+        oc delete secret allas-credentials --ignore-not-found
+        oc create secret generic allas-credentials \
+          --from-literal=OS_AUTH_URL=https://pouta.csc.fi:5001/v3 \
+          --from-literal=OS_USERNAME="${{ secrets.OS_USERNAME }}" \
+          --from-literal=OS_PASSWORD="${{ secrets.OS_PASSWORD }}" \
+          --from-literal=OS_PROJECT_NAME="${{ secrets.OS_PROJECT_NAME }}" \
+          --from-literal=OS_PROJECT_DOMAIN_NAME=Default \
+          --from-literal=OS_USER_DOMAIN_NAME=Default \
+          --from-literal=DATA_BUCKET="${{ secrets.DATA_BUCKET }}"
+    
+    - name: Build and Push Images to Rahti Registry
+      run: |
+        # Login to Rahti's integrated container registry
+        docker login -u $(oc whoami) -p $(oc whoami -t) image-registry.apps.2.rahti.csc.fi
+        
+        # Build and push data-ingest service
+        docker build -t image-registry.apps.2.rahti.csc.fi/${{ secrets.RAHTI_PROJECT }}/data-ingest:latest ./data-ingest
+        docker push image-registry.apps.2.rahti.csc.fi/${{ secrets.RAHTI_PROJECT }}/data-ingest:latest
+        
+        # Build and push data-clean service
+        docker build -t image-registry.apps.2.rahti.csc.fi/${{ secrets.RAHTI_PROJECT }}/data-clean:latest ./data-clean
+        docker push image-registry.apps.2.rahti.csc.fi/${{ secrets.RAHTI_PROJECT }}/data-clean:latest
+        
+        # Build and push data-visualization service
+        docker build -t image-registry.apps.2.rahti.csc.fi/${{ secrets.RAHTI_PROJECT }}/data-visualization:latest ./data-visualization
+        docker push image-registry.apps.2.rahti.csc.fi/${{ secrets.RAHTI_PROJECT }}/data-visualization:latest
+    
+    - name: Update Kubernetes manifests with correct image names
+      run: |
+        # Replace image names in deployment manifests
+        sed -i "s|image: .*data-ingest:.*|image: image-registry.apps.2.rahti.csc.fi/${{ secrets.RAHTI_PROJECT }}/data-ingest:latest|g" k8s/data-ingest-deployment.yaml
+        sed -i "s|image: .*data-clean:.*|image: image-registry.apps.2.rahti.csc.fi/${{ secrets.RAHTI_PROJECT }}/data-clean:latest|g" k8s/data-clean-deployment.yaml
+        sed -i "s|image: .*data-visualization:.*|image: image-registry.apps.2.rahti.csc.fi/${{ secrets.RAHTI_PROJECT }}/data-visualization:latest|g" k8s/data-visualization-deployment.yaml
+    
+    - name: Deploy to OpenShift
+      run: |
+        # Apply Kubernetes manifests
+        oc apply -f k8s/
+        
+        # Wait for deployments to be ready
+        echo "Waiting for deployments to be ready..."
+        oc rollout status deployment/redis --timeout=300s
+        oc rollout status deployment/data-ingest --timeout=300s
+        oc rollout status deployment/data-clean --timeout=300s
+        oc rollout status deployment/data-visualization --timeout=300s
+    
+    - name: Get Application URL
+      run: |
+        echo "🎉 Deployment completed successfully!"
+        echo ""
+        echo "📊 Your Data Analysis Pipeline is available at:"
+        ROUTE_URL=$(oc get route data-visualization -o jsonpath='{.spec.host}')
+        echo "https://${ROUTE_URL}"
+        echo ""
+        echo "🔍 Check deployment status:"
+        oc get pods
+        echo ""
+        echo "📝 View logs with:"
+        echo "oc logs -f deployment/data-visualization"
+        
+        # Save URL to job summary
+        echo "## 🚀 Deployment Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "✅ **Deployment Status:** Success" >> $GITHUB_STEP_SUMMARY
+        echo "🌐 **Application URL:** https://${ROUTE_URL}" >> $GITHUB_STEP_SUMMARY
+        echo "📊 **Dashboard:** [Access your pipeline](https://${ROUTE_URL})" >> $GITHUB_STEP_SUMMARY
+        
+    - name: Run Health Check
+      run: |
+        echo "🏥 Running health check..."
+        
+        # Check if all pods are running
+        PODS_READY=$(oc get pods --no-headers | grep -v Terminating | grep Running | wc -l)
+        PODS_TOTAL=$(oc get pods --no-headers | grep -v Terminating | wc -l)
+        
+        echo "Pods ready: ${PODS_READY}/${PODS_TOTAL}"
+        
+        if [ $PODS_READY -eq $PODS_TOTAL ]; then
+          echo "✅ All pods are healthy!"
+        else
+          echo "⚠️ Some pods are not ready yet"
+          oc get pods
+        fi
+        
+        # Add health status to summary
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 🏥 Health Check" >> $GITHUB_STEP_SUMMARY
+        echo "- **Pods Status:** ${PODS_READY}/${PODS_TOTAL} ready" >> $GITHUB_STEP_SUMMARY
+        
+        # Show running services
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 🔧 Services" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        oc get services >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
