@@ -1,0 +1,196 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: data-pipeline
+  labels:
+    app: data-pipeline
+spec:
+  containers:
+  # Redis Container
+  - name: redis
+    image: redis:7-alpine
+    ports:
+    - containerPort: 6379
+    resources:
+      limits:
+        memory: "256Mi"
+        cpu: "100m"
+      requests:
+        memory: "128Mi"
+        cpu: "50m"
+    volumeMounts:
+    - name: shared-data
+      mountPath: /shared
+  
+  # Data Ingestion Container
+  - name: data-ingest
+    image: image-registry.openshift-image-registry.svc:5000/your-data-pipeline/data-ingest:latest
+    env:
+    - name: OS_USERNAME
+      valueFrom:
+        secretKeyRef:
+          key: OS_USERNAME
+          name: allas-credentials
+    - name: OS_USER_DOMAIN_NAME
+      valueFrom:
+        secretKeyRef:
+          key: OS_USER_DOMAIN_NAME
+          name: allas-credentials
+    - name: DATA_BUCKET
+      valueFrom:
+        secretKeyRef:
+          key: DATA_BUCKET
+          name: allas-credentials
+    - name: OS_AUTH_URL
+      valueFrom:
+        secretKeyRef:
+          key: OS_AUTH_URL
+          name: allas-credentials
+    - name: OS_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          key: OS_PASSWORD
+          name: allas-credentials
+    - name: OS_PROJECT_DOMAIN_NAME
+      valueFrom:
+        secretKeyRef:
+          key: OS_PROJECT_DOMAIN_NAME
+          name: allas-credentials
+    - name: OS_PROJECT_NAME
+      valueFrom:
+        secretKeyRef:
+          key: OS_PROJECT_NAME
+          name: allas-credentials
+    - name: SHARED_DATA_PATH
+      value: "/shared/data"
+    - name: REDIS_HOST
+      value: "localhost"
+    - name: REDIS_PORT
+      value: "6379"
+    resources:
+      limits:
+        memory: "512Mi"
+        cpu: "200m"
+      requests:
+        memory: "256Mi"
+        cpu: "100m"
+    volumeMounts:
+    - name: shared-data
+      mountPath: /shared
+  
+  # Data Cleaning Container
+  - name: data-clean
+    image: image-registry.openshift-image-registry.svc:5000/your-data-pipeline/data-clean:latest
+    env:
+    - name: OS_USERNAME
+      valueFrom:
+        secretKeyRef:
+          key: OS_USERNAME
+          name: allas-credentials
+    - name: OS_USER_DOMAIN_NAME
+      valueFrom:
+        secretKeyRef:
+          key: OS_USER_DOMAIN_NAME
+          name: allas-credentials
+    - name: DATA_BUCKET
+      valueFrom:
+        secretKeyRef:
+          key: DATA_BUCKET
+          name: allas-credentials
+    - name: OS_AUTH_URL
+      valueFrom:
+        secretKeyRef:
+          key: OS_AUTH_URL
+          name: allas-credentials
+    - name: OS_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          key: OS_PASSWORD
+          name: allas-credentials
+    - name: OS_PROJECT_DOMAIN_NAME
+      valueFrom:
+        secretKeyRef:
+          key: OS_PROJECT_DOMAIN_NAME
+          name: allas-credentials
+    - name: OS_PROJECT_NAME
+      valueFrom:
+        secretKeyRef:
+          key: OS_PROJECT_NAME
+          name: allas-credentials
+    - name: SHARED_DATA_PATH
+      value: "/shared/data"
+    - name: REDIS_HOST
+      value: "localhost"
+    - name: REDIS_PORT
+      value: "6379"
+    resources:
+      limits:
+        memory: "768Mi"
+        cpu: "300m"
+      requests:
+        memory: "384Mi"
+        cpu: "150m"
+    volumeMounts:
+    - name: shared-data
+      mountPath: /shared
+  
+  # Data Visualization Container
+  - name: data-visualization
+    image: image-registry.openshift-image-registry.svc:5000/your-data-pipeline/data-visualization:latest
+    ports:
+    - containerPort: 8501
+    env:
+    - name: SHARED_DATA_PATH
+      value: "/shared/data"
+    - name: REDIS_HOST
+      value: "localhost"
+    - name: REDIS_PORT
+      value: "6379"
+    resources:
+      limits:
+        memory: "768Mi"
+        cpu: "300m"
+      requests:
+        memory: "384Mi"
+        cpu: "150m"
+    volumeMounts:
+    - name: shared-data
+      mountPath: /shared
+  
+  volumes:
+  - name: shared-data
+    emptyDir: {}
+  
+  restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: data-pipeline-service
+  labels:
+    app: data-pipeline
+spec:
+  selector:
+    app: data-pipeline
+  ports:
+  - name: streamlit
+    port: 8501
+    targetPort: 8501
+  - name: redis
+    port: 6379
+    targetPort: 6379
+  type: ClusterIP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: data-pipeline-route
+  labels:
+    app: data-pipeline
+spec:
+  to:
+    kind: Service
+    name: data-pipeline-service
+  port:
+    targetPort: streamlit
+  wildcardPolicy: None

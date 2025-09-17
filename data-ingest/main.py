@@ -46,7 +46,10 @@ class DataIngestService:
         self.data_processor = DataProcessor()
         
         # Redis client for coordination between services (status tracking, file metadata)
-        self.redis_client = redis.Redis(host='redis', port=6379, decode_responses=True)
+        # Use environment variables for Redis connection or fallback to defaults
+        redis_host = os.getenv('REDIS_HOST', 'redis')
+        redis_port = int(os.getenv('REDIS_PORT', '6379'))
+        self.redis_client = redis.Redis(host=redis_host, port=redis_port, decode_responses=True)
         
         # Shared volume path where processed files are stored for other services
         # Use environment variable or fallback to writable directory

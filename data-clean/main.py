@@ -69,7 +69,10 @@ class DataCleanService:
         self.quality_checker = QualityChecker()
         
         # Redis client for inter-service coordination and status tracking
-        self.redis_client = redis.Redis(host='redis', port=6379, decode_responses=True)
+        # Use environment variables for Redis connection or fallback to defaults
+        redis_host = os.getenv('REDIS_HOST', 'redis')
+        redis_port = int(os.getenv('REDIS_PORT', '6379'))
+        self.redis_client = redis.Redis(host=redis_host, port=redis_port, decode_responses=True)
         
         # File system configuration for data pipeline
         # Use environment variable or fallback to writable directory
